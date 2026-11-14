@@ -158,6 +158,8 @@ function cr {
 
     & $cmake --build build
 
+    & $target
+
 }
 
 # -----------------------------
