@@ -61,6 +61,19 @@ function find-cmake {
     return "cmake"
 }
 
+function find-ninja {
+
+    $c = Get-Command ninja -ErrorAction SilentlyContinue
+    if ($c) { return $c.Path }
+
+    # ninja bundled with Visual Studio
+    $vs = Get-ChildItem "C:\Program Files\Microsoft Visual Studio\*\*\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe" -ErrorAction SilentlyContinue |
+        Sort-Object FullName -Descending | Select-Object -First 1
+    if ($vs) { return $vs.FullName }
+
+    return $null
+}
+
 $gcc = find-gcc
 $clang = find-clang
 $clangpp = find-clangpp
@@ -80,8 +93,8 @@ $target = "$target_dir\$project_name.exe"
 # flags
 # -----------------------------
 
-$ldflags_common = "-std=c++2c -Wall -Wextra"
-$ldflags_opt = "-std=c++2c -O2 -Wall -Wextra -g"
+$ldflags_common = @("-std=c++2c", "-Wall", "-Wextra")
+$ldflags_opt = @("-std=c++2c", "-O2", "-Wall", "-Wextra", "-g")
 
 # -----------------------------
 # helpers
@@ -97,7 +110,10 @@ function ensure-target {
 # compile clangpp
 # -----------------------------
 
-function r {
+# NOTE: cannot be named "r" — built-in alias r (Invoke-History)
+# outranks functions in PowerShell command resolution
+
+function run {
 
     ensure-target
 
@@ -128,10 +144,19 @@ function cr {
     Remove-Item build -Recurse -Force -ErrorAction Ignore
     New-Item build -ItemType Directory | Out-Null
 
-    & $cmake -S . -B build -G "Ninja" `
-        -D CMAKE_C_COMPILER="$clangpp"
+    $ninja = find-ninja
+    if ($ninja) {
+        $env:Path = "$(Split-Path $ninja);$env:Path"
+        & $cmake -S . -B build -G "Ninja" `
+            -D CMAKE_CXX_COMPILER="$clangpp"
+    }
+    else {
+        # no ninja — let cmake pick the default generator
+        & $cmake -S . -B build `
+            -D CMAKE_CXX_COMPILER="$clangpp"
+    }
 
-    cmake --build build
+    & $cmake --build build
 
 }
 
@@ -218,7 +243,7 @@ function compilers {
 
 switch ($cmd) {
 
-    "r" { r }
+    "r" { run }
     "ro" { ro }
     "cr" { cr }
     "san" { san $arg }
